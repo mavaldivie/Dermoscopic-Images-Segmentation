@@ -33,6 +33,10 @@ def mean_IoU(y_true, y_pred, threshold=0.6):
     pred = tf.cast(y_pred > threshold, tf.int32)
     return miou(y_true, pred)
 
+def discrete_jacc(y_true, y_pred, threshold=0.6):
+    pred = tf.cast(y_pred > threshold, tf.float32)
+    return jacc_coef(y_true, pred)
+
 acc = tf.keras.metrics.BinaryAccuracy(threshold=0.6)
 
 def sensitivity(y_true, y_pred, threshold=0.6, smooth=smooth_default):
