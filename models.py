@@ -1,5 +1,6 @@
+from unicodedata import name
 from keras import Input, Model
-from keras import layers
+from keras import layers, activations
 from keras.optimizers import Adam
 from keras import regularizers
 
@@ -26,6 +27,15 @@ def expanding_block(model, residual, channels, activation='relu', padding=None, 
 def batch_convolution_block(model, channels, activation='relu', padding='same'):
     model = layers.BatchNormalization()(model)
     model = double_convolution_block(model, channels, activation=activation, padding=padding)
+    return model
+
+def batch_convolution_block_new(model, channels, padding='same'):
+    model = layers.Conv2D(channels, (3, 3), padding = padding)(model) 
+    model = layers.BatchNormalizationV2()(model)
+    model = layers.ReLU()(model)
+    model = layers.Conv2D(channels, (3, 3), padding = padding)(model) 
+    model = layers.BatchNormalizationV2()(model)
+    model = layers.ReLU()(model)
     return model
 
 def create_model():
@@ -107,15 +117,15 @@ def dropout_model(image_size):
     inputs = Input(shape=(image_size[0], image_size[1], 3))    #(300, 300)
 
     conv1 = double_convolution_block(inputs, 64, padding = 'same')               #(296, 296)
-    conv1 = layers.Dropout(0.5)(conv1)
+    #conv1 = layers.Dropout(0.5)(conv1)
     conv2 = contracting_block(conv1, 128, padding = 'same')                      #(144, 144)
-    conv2 = layers.Dropout(0.5)(conv2)
+    #conv2 = layers.Dropout(0.5)(conv2)
     conv3 = contracting_block(conv2, 256, padding = 'same')                      #(68, 68)
-    conv3 = layers.Dropout(0.5)(conv3)
+    #conv3 = layers.Dropout(0.5)(conv3)
     conv4 = contracting_block(conv3, 512, padding = 'same')                      #(30, 30)
-    conv4 = layers.Dropout(0.5)(conv4)
+    #conv4 = layers.Dropout(0.5)(conv4)
     conv5 = contracting_block(conv4, 1024, padding = 'same')                     #(11, 11)
-    conv5 = layers.Dropout(0.5)(conv5)
+    #conv5 = layers.Dropout(0.5)(conv5)
 
     upconv1 = expanding_block(conv5, conv4, 512, padding = 'same')            
     upconv2 = expanding_block(upconv1, conv3, 256, padding = 'same')          
@@ -182,6 +192,42 @@ def batch_normalization_model(image_size):
     conc4 = layers.concatenate([conv1,up4])
     conv9 = batch_convolution_block(conc4, 64) 
 
+    model = layers.Conv2D(2, 3, activation = 'relu', padding = 'same')(conv9) 
+    #model = layers.Conv2D(16, (3, 3), activation = 'relu', padding = 'same')(conv9)              
+    #model = layers.Conv2D(4, (3, 3), activation = 'relu', padding = 'same')(model)   
+    model = layers.Conv2D(1, 1, activation = 'sigmoid')(model)                                                    # (384, 384, 1)
+
+    return Model(inputs=inputs, outputs=model)
+
+def short_batch_normalization_model(image_size):
+    inputs = Input(shape=(image_size[0], image_size[1], 3))
+
+    conv1 = batch_convolution_block(inputs, 64)
+    pool1 = layers.MaxPooling2D(pool_size=(2, 2))(conv1)  
+
+    conv2 = batch_convolution_block(pool1, 128)
+    pool2 = layers.MaxPooling2D(pool_size=(2, 2))(conv2)
+
+    conv3 = batch_convolution_block(pool2, 256)
+    pool3 = layers.MaxPooling2D(pool_size=(2, 2))(conv3)
+
+    conv4 = batch_convolution_block(pool3, 512)
+
+    #up2 = layers.UpSampling2D(size = (2,2), padding='same')(conv6) 
+    up2 = layers.Conv2DTranspose(256, (3,3), strides=(2,2), padding='same')(conv4)     
+    conc2 = layers.concatenate([conv3,up2])
+    conv7 = batch_convolution_block(conc2, 256) 
+
+    #up3 = layers.UpSampling2D(size = (2,2), padding='same')(conv7) 
+    up3 = layers.Conv2DTranspose(128, (3,3), strides=(2,2), padding='same')(conv7)     
+    conc3 = layers.concatenate([conv2,up3])
+    conv8 = batch_convolution_block(conc3, 128) 
+
+    #up4 = layers.UpSampling2D(size = (2,2), padding='same')(conv8) 
+    up4 = layers.Conv2DTranspose(64, (3,3), strides=(2,2), padding='same')(conv8)     
+    conc4 = layers.concatenate([conv1,up4])
+    conv9 = batch_convolution_block(conc4, 64) 
+
     model = layers.Conv2D(2, 3, activation = 'relu', padding = 'same')(conv9)                                       # (384, 384, 2)
     model = layers.Conv2D(1, 1, activation = 'sigmoid')(model)                                                    # (384, 384, 1)
 
@@ -191,22 +237,97 @@ def batch_normalization_model(image_size):
 def unet_model(image_size):
     inputs = Input(shape=(image_size[0], image_size[1], 3))    #(300, 300)
 
-    conv1 = double_convolution_block(inputs, 64)               #(296, 296)
-    conv2 = contracting_block(conv1, 128)                      #(144, 144)
-    conv3 = contracting_block(conv2, 256)                      #(68, 68)
-    conv4 = contracting_block(conv3, 512)                      #(30, 30)
-    conv5 = contracting_block(conv4, 1024)                     #(11, 11)
+    conv1 = double_convolution_block(inputs, 64, padding = 'same')   
+    conv2 = contracting_block(conv1, 128, padding = 'same')       
+    conv3 = contracting_block(conv2, 256, padding = 'same')     
+    conv4 = contracting_block(conv3, 512, padding = 'same')    
+    conv5 = contracting_block(conv4, 1024, padding = 'same')  
 
-    crop1 = layers.Cropping2D(4)(conv4)                        #(22, 22)
-    crop2 = layers.Cropping2D(16)(conv3)                       #(36, 36)
-    crop3 = layers.Cropping2D(40)(conv2)                       #(64, 64)
-    crop4 = layers.Cropping2D(88)(conv1)                       #(120, 120)
-
-    upconv1 = expanding_block(conv5, crop1, 512)               #(18, 18)
-    upconv2 = expanding_block(upconv1, crop2, 256)             #(32, 32)
-    upconv3 = expanding_block(upconv2, crop3, 128)             #(60, 60) 
-    upconv4 = expanding_block(upconv3, crop4, 64)              #(116, 116)
+    upconv1 = expanding_block(conv5, conv4, 512, padding = 'same')            
+    upconv2 = expanding_block(upconv1, conv3, 256, padding = 'same')          
+    upconv3 = expanding_block(upconv2, conv2, 128, padding = 'same')            
+    upconv4 = expanding_block(upconv3, conv1, 64, padding = 'same')              
 
     model = layers.Conv2D(2, 1, activation = 'relu')(upconv4)
     model = layers.Conv2D(1, 1, activation = 'sigmoid')(model)
+    return Model(inputs=inputs, outputs=model)
+
+
+def batch_normalization_sigmoid_model(image_size):
+    inputs = Input(shape=(image_size[0], image_size[1], 3))
+
+    conv1 = batch_convolution_block(inputs, 64, activation='sigmoid')
+    pool1 = layers.MaxPooling2D(pool_size=(2, 2))(conv1)  
+
+    conv2 = batch_convolution_block(pool1, 128, activation='sigmoid')
+    pool2 = layers.MaxPooling2D(pool_size=(2, 2))(conv2)
+
+    conv3 = batch_convolution_block(pool2, 256, activation='sigmoid')
+    pool3 = layers.MaxPooling2D(pool_size=(2, 2))(conv3)
+
+    conv4 = batch_convolution_block(pool3, 512, activation='sigmoid')
+    pool4 = layers.MaxPooling2D(pool_size=(2, 2))(conv4)
+
+    conv5 = batch_convolution_block(pool4, 1024, activation='sigmoid') 
+
+    #up1 = layers.UpSampling2D(size = (2,2), padding='same')(conv5) 
+    up1 = layers.Conv2DTranspose(512, (3,3), strides=(2,2), padding='same')(conv5)     
+    conc1 = layers.concatenate([conv4,up1])
+    conv6 = batch_convolution_block(conc1, 512, activation='sigmoid') 
+
+    #up2 = layers.UpSampling2D(size = (2,2), padding='same')(conv6) 
+    up2 = layers.Conv2DTranspose(256, (3,3), strides=(2,2), padding='same')(conv6)     
+    conc2 = layers.concatenate([conv3,up2])
+    conv7 = batch_convolution_block(conc2, 256, activation='sigmoid') 
+
+    #up3 = layers.UpSampling2D(size = (2,2), padding='same')(conv7) 
+    up3 = layers.Conv2DTranspose(128, (3,3), strides=(2,2), padding='same')(conv7)     
+    conc3 = layers.concatenate([conv2,up3])
+    conv8 = batch_convolution_block(conc3, 128, activation='sigmoid') 
+
+    #up4 = layers.UpSampling2D(size = (2,2), padding='same')(conv8) 
+    up4 = layers.Conv2DTranspose(64, (3,3), strides=(2,2), padding='same')(conv8)     
+    conc4 = layers.concatenate([conv1,up4])
+    conv9 = batch_convolution_block(conc4, 64, activation='sigmoid') 
+
+    model = layers.Conv2D(2, 3, activation = 'sigmoid', padding = 'same')(conv9)                                       # (384, 384, 2)
+    model = layers.Conv2D(1, 1, activation = 'sigmoid')(model)                                                    # (384, 384, 1)
+
+    return Model(inputs=inputs, outputs=model)
+
+def unet_plus_plus(image_size):
+    inputs = Input(shape=(image_size[0], image_size[1], 3))
+
+    conv1 = layers.Conv2D(64, (3, 3), activation = 'relu', padding = 'same', name=f'X-0-0-1')(inputs) 
+    conv1 = layers.Conv2D(64, (3, 3), activation = 'relu', padding = 'same', name=f'X-0-0-2')(conv1)
+    arr = [[conv1]]
+    
+    for j in range(5):
+        for i in range(1 if j == 0 else 0, 5 - j):
+            if j == 0:
+                newNode = layers.MaxPooling2D(pool_size=(2, 2))(arr[i - 1][j]) 
+                arr.append([])
+            else:
+                previous = [layers.UpSampling2D((2, 2), interpolation="bilinear")(arr[i + 1][j - 1])]
+                for k in range(j): previous.append(arr[i][k])
+                newNode = layers.concatenate(previous)
+            newNode = batch_convolution_block(newNode, 64 * (2 ** i))
+            #newNode = layers.Conv2D(64 * (2 ** i), (3, 3), activation = 'relu', padding='same', name=f'X-{i}-{j}-1')(newNode)
+            #if j == 0 or i + j == 4: 
+            #newNode = layers.Conv2D(64 * (2 ** i), (3, 3), activation = 'relu', padding='same', name=f'X-{i}-{j}-2')(newNode)
+            arr[i].append(newNode)
+
+    # final1 = layers.Conv2D(1, (3, 3), activation = 'relu', padding='same', name=f'Final1')(arr[0][1])
+    # final2 = layers.Conv2D(1, (3, 3), activation = 'relu', padding='same', name=f'Final2')(arr[0][2])
+    # final3 = layers.Conv2D(1, (3, 3), activation = 'relu', padding='same', name=f'Final3')(arr[0][3])
+    #final4 = layers.Conv2D(1, (3, 3), activation = 'relu', padding='same', name=f'Final4')(arr[0][4])
+
+    sixteen = [layers.Conv2D(16, (3, 3), activation = 'relu', padding='same')(arr[0][i]) for i in range(1, 5)]
+    four = [layers.Conv2D(4, (3, 3), activation = 'relu', padding='same')(sixteen[i]) for i in range(4)]
+    model = (four[0] + four[1] + four[2] + four[3]) / 4
+
+    #model = layers.Conv2D(16, (3, 3), activation = 'relu', padding='same')(arr[0][4])     
+    #model = layers.Conv2D(4, (3, 3), activation = 'relu', padding='same')(model)  
+    model = layers.Conv2D(1, (3, 3), activation = 'sigmoid', padding='same')(model)
+ 
     return Model(inputs=inputs, outputs=model)
