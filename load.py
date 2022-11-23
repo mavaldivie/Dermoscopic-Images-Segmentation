@@ -51,6 +51,29 @@ def apply_clahe(img, image_size, clahe):
     clahe_image = cv2.merge((red_clahe, green_clahe, blue_clahe))
     return np.asarray(clahe_image) / 255
 
+def clahe_hsv(img, image_size, clahe):
+    path = img.numpy().decode("utf-8")
+    image = cv2.imread(path)
+    image = cv2.resize(image, image_size)
+
+    hsvImage = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsvImage)
+
+    h = np.asarray(h)
+    s = np.asarray(s)
+    v = np.asarray(v)
+
+    v = clahe.apply(v)
+    clahe_image = cv2.merge((h, s, v))
+    return np.asarray(clahe_image) / 255
+
+def Clahe_HSV_Dataset(image_paths, label_paths, image_size, mask_size, length=None, batch_size=1):
+    if length is None: length = len(image_paths)
+    dataset = tf.data.Dataset.from_tensor_slices((image_paths, label_paths)).shuffle(length)
+    cl = cv2.createCLAHE(3, (3, 3))
+    def wrapper(image): 
+      return tf.py_function(lambda x: clahe_hsv(x, image_size, cl), [image], tf.float32)
+    return dataset.map(map_func=lambda x,y: (wrapper(x), read_mask(y, mask_size))).batch(batch_size, drop_remainder=True).repeat()
 
 def Clahe_Dataset(image_paths, label_paths, image_size, mask_size, length=None, batch_size=1):
     if length is None: length = len(image_paths)
