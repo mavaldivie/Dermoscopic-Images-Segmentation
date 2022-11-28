@@ -64,3 +64,15 @@ def specificity(y_true, y_pred, threshold=0.6, smooth=smooth_default):
     TN = K.sum(f_true * f_pred, axis=1, keepdims=True)
 
     return (TN + smooth) / (TN + FP + smooth)
+
+def precision(y_true, y_pred, threshold=0.6, smooth=smooth_default):
+    true = tf.cast(y_true, tf.float32)
+    pred = tf.cast(y_pred > threshold, tf.float32)
+
+    f_true = K.batch_flatten(true)
+    f_pred = K.batch_flatten(pred)
+    TP = K.sum(f_true * f_pred, axis=1, keepdims=True)
+    f_true = 1.0 - f_true
+    FP = K.sum(f_true * f_pred, axis=1, keepdims=True)
+
+    return (TP + smooth) / (FP + TP + smooth)
